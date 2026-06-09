@@ -251,29 +251,47 @@ function renderIdeas(){
 }
 document.getElementById('ideaInput').addEventListener('keydown',e=>{if(e.key==='Enter')addIdea();});
 
+// ── Google Sheet ID — preencher após criar o sheet ────
+// Copie da URL: docs.google.com/spreadsheets/d/SHEET_ID/edit
+const GSHEET_ID = window.CENTRAL_SHEET_ID || '';
+
+// Lê uma aba do Google Sheet como JSON via gviz
+async function fetchSheet(sheetName) {
+  if (!GSHEET_ID) throw new Error('SHEET_ID não configurado');
+  const url = `https://docs.google.com/spreadsheets/d/${GSHEET_ID}/gviz/tq?tqx=out:json&sheet=${encodeURIComponent(sheetName)}&t=${Date.now()}`;
+  const r = await fetch(url);
+  const text = await r.text();
+  // gviz retorna /*O_o*/\ngoogle.visualization.Query.setResponse({...})
+  const json = JSON.parse(text.replace(/^[^{]+/, '').replace(/[^}]+$/, ''));
+  const cols = json.table.cols.map(c => c.label);
+  return (json.table.rows || []).map(row => {
+    const obj = {};
+    cols.forEach((col, i) => { obj[col] = row.c[i]?.v ?? ''; });
+    return obj;
+  });
+}
+
 async function syncIdeiasGmail(){
   const status=document.getElementById('ideiasStatus');
   const btn=document.getElementById('btnIdeiasSync');
   btn.disabled=true; status.className='status-dot loading'; status.innerHTML='<span class="spinner"></span>';
   try{
-    const resp=await fetch("https://api.anthropic.com/v1/messages",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({
-      model:"claude-sonnet-4-20250514",max_tokens:1000,
-      mcp_servers:[{type:"url",url:"https://gmailmcp.googleapis.com/mcp/v1",name:"gmail-mcp"}],
-      system:`Busque emails no Gmail com assunto contendo "💡 IDEIA" recebidos nos últimos 30 dias.
-Para cada email extraia do corpo: tag (após "tag:"), texto (após "texto:"), hora (após "hora:").
-Retorne SOMENTE JSON: {"ideias":[{"tag":"...","texto":"...","hora":"..."}]}
-Se não houver: {"ideias":[]}`,
-      messages:[{role:"user",content:"Busque emails de ideias e retorne JSON."}]
-    })});
-    const data=await resp.json();
-    const raw=data.content?.filter(b=>b.type==='text').map(b=>b.text).join('')||'';
-    const parsed=JSON.parse(raw.replace(/```json|```/g,'').trim());
-    const ideias=parsed.ideias||[];
-    let local=loadArr('ideas').filter(i=>!i.remote);
-    const remotas=ideias.map(i=>({id:Date.now()+Math.random(),text:i.texto||'(sem texto)',tag:i.tag||'geral',remote:true,ts:i.hora||'—'}));
+    if (!GSHEET_ID) throw new Error('Configure CENTRAL_SHEET_ID no newtab.html');
+    const rows = await fetchSheet('ideias');
+    const local = loadArr('ideas').filter(i=>!i.remote);
+    const remotas = rows.map(r=>({
+      id: Date.now()+Math.random(),
+      text: r.texto || r.text || '(sem texto)',
+      tag: r.tag || 'geral',
+      remote: true,
+      ts: r.hora || r.data || '—'
+    }));
     save('ideas',[...remotas,...local]); renderIdeas();
-    status.className='status-dot ok'; status.textContent=`✓ ${ideias.length}`;
-  }catch(err){ status.className='status-dot error'; status.textContent='✗ erro'; }
+    status.className='status-dot ok'; status.textContent=`✓ ${remotas.length}`;
+  }catch(err){
+    status.className='status-dot error'; status.textContent='✗ erro';
+    console.error('syncIdeias:', err.message);
+  }
   finally{ btn.disabled=false; }
 }
 
@@ -381,25 +399,29 @@ async function syncEscolaGmail(){
   const status=document.getElementById('escolaStatus');
   const btn=document.getElementById('btnEscolaSync');
   btn.disabled=true; status.className='status-dot loading'; status.innerHTML='<span class="spinner"></span>';
-  list.innerHTML='<div class="empty"><span class="spinner"></span><br>Buscando no Gmail...</div>';
+  list.innerHTML='<div class="empty"><span class="spinner"></span><br>Buscando tarefas...</div>';
   try{
-    const resp=await fetch("https://api.anthropic.com/v1/messages",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({
-      model:"claude-sonnet-4-20250514",max_tokens:1000,
-      mcp_servers:[{type:"url",url:"https://gmailmcp.googleapis.com/mcp/v1",name:"gmail-mcp"}],
-      system:`Busque emails no Gmail com assunto "Nova tarefa do colégio" nos últimos 30 dias.
-Para cada um extraia: titulo, materia, prazo, instrucoes.
-Retorne SOMENTE JSON: {"tarefas":[{"titulo":"...","materia":"...","prazo":"...","instrucoes":"..."}]}
-Se não houver: {"tarefas":[]}`,
-      messages:[{role:"user",content:"Busque emails de tarefas do colégio e retorne JSON."}]
-    })});
-    const data=await resp.json();
-    const raw=data.content?.filter(b=>b.type==='text').map(b=>b.text).join('')||'';
-    const parsed=JSON.parse(raw.replace(/```json|```/g,'').trim());
-    renderTarefas(parsed.tarefas||[]);
-    status.className='status-dot ok'; status.textContent=`✓ ${(parsed.tarefas||[]).length}`;
+    if (!GSHEET_ID) throw new Error('Configure CENTRAL_SHEET_ID no newtab.html');
+    const rows = await fetchSheet('tarefas');
+    const tarefas = rows.map(r => ({
+      titulo:    r.titulo    || r.assunto || r.subject || 'Tarefa',
+      materia:   r.materia   || 'Colégio',
+      prazo:     r.prazo     || '',
+      instrucoes: r.instrucoes || ''
+    }));
+    renderTarefas(tarefas);
+    save('tarefas_cache', tarefas);
+    status.className='status-dot ok'; status.textContent=`✓ ${tarefas.length}`;
   }catch(err){
     status.className='status-dot error'; status.textContent='✗ erro';
-    list.innerHTML='<div class="empty"><span>⚠️</span>Erro ao buscar.</div>';
+    const cache = load('tarefas_cache');
+    if (cache && cache.length) {
+      renderTarefas(cache);
+      status.textContent = '⚠ cache';
+    } else {
+      list.innerHTML='<div class="empty"><span>⚠️</span>Configure o SHEET_ID<br>no newtab.html.</div>';
+    }
+    console.error('syncEscola:', err.message);
   }finally{ btn.disabled=false; }
 }
 
