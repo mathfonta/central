@@ -5,14 +5,21 @@
 $ErrorActionPreference = 'Stop'
 
 # ── Configuracao ──────────────────────────────────────
-$obsidianAutoPost = "G:\Meu Drive\OBSidian\AutoPost\📊 Status.md"
-$obsidianObras    = "G:\Meu Drive\OBSidian\Obras\📊 Status.md"
-$centralRepo      = "C:\Projetos\central"
+$obsidianAutoPostDir = "G:\Meu Drive\OBSidian\AutoPost"
+$obsidianObrasDir    = "G:\Meu Drive\OBSidian\Obras"
+$centralRepo         = "C:\Projetos\central"
+
+# Usa wildcard para evitar problema de encoding com emoji no nome do arquivo
+function Find-StatusMd($dir) {
+    if (-not (Test-Path $dir)) { return $null }
+    $file = Get-ChildItem -Path $dir -Filter "*Status.md" -ErrorAction SilentlyContinue | Select-Object -First 1
+    return $file
+}
 
 # ── Verificacoes iniciais ──────────────────────────────
 if (-not (Test-Path $centralRepo)) {
     Write-Host "ERRO: Repo nao encontrado em $centralRepo" -ForegroundColor Red
-    Write-Host "Clone o repo primeiro: git clone https://github.com/mathfonta/central.git $centralRepo"
+    Write-Host "Clone o repo: git clone https://github.com/mathfonta/central.git $centralRepo"
     exit 1
 }
 
@@ -20,28 +27,30 @@ $synced = @()
 $errors = @()
 
 # ── Copiar AutoPost ────────────────────────────────────
-if (Test-Path $obsidianAutoPost) {
-    Copy-Item $obsidianAutoPost "$centralRepo\status-autopost.md" -Force
+$autoPostFile = Find-StatusMd $obsidianAutoPostDir
+if ($autoPostFile) {
+    Copy-Item $autoPostFile.FullName "$centralRepo\status-autopost.md" -Force
     $synced += "AutoPost"
-    Write-Host "OK AutoPost Status.md copiado" -ForegroundColor Green
+    Write-Host "OK AutoPost: $($autoPostFile.Name)" -ForegroundColor Green
 } else {
-    $errors += "AutoPost: arquivo nao encontrado em $obsidianAutoPost"
+    $errors += "AutoPost: nenhum *Status.md em $obsidianAutoPostDir"
     Write-Host "AVISO: $($errors[-1])" -ForegroundColor Yellow
 }
 
 # ── Copiar Obras ───────────────────────────────────────
-if (Test-Path $obsidianObras) {
-    Copy-Item $obsidianObras "$centralRepo\status-obras.md" -Force
+$obrasFile = Find-StatusMd $obsidianObrasDir
+if ($obrasFile) {
+    Copy-Item $obrasFile.FullName "$centralRepo\status-obras.md" -Force
     $synced += "Obras"
-    Write-Host "OK Obras Status.md copiado" -ForegroundColor Green
+    Write-Host "OK Obras: $($obrasFile.Name)" -ForegroundColor Green
 } else {
-    $errors += "Obras: arquivo nao encontrado em $obsidianObras"
+    $errors += "Obras: nenhum *Status.md em $obsidianObrasDir"
     Write-Host "AVISO: $($errors[-1])" -ForegroundColor Yellow
 }
 
-# ── Nada para commitar ─────────────────────────────────
+# ── Nada para sync ─────────────────────────────────────
 if ($synced.Count -eq 0) {
-    Write-Host "Nenhum arquivo sincronizado. Verifique se o Google Drive esta montado." -ForegroundColor Red
+    Write-Host "Nenhum arquivo encontrado. Verifique se o Google Drive esta montado." -ForegroundColor Red
     exit 1
 }
 
