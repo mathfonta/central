@@ -25,8 +25,16 @@ if (-not (Test-Path $centralRepo)) {
 # ── Git pull ANTES de copiar arquivos ─────────────────
 Set-Location $centralRepo
 Write-Host "Sincronizando com GitHub..." -ForegroundColor Cyan
+
+# Descarta qualquer versao local dos arquivos gerados (serao recriados abaixo)
+git checkout -- status-autopost.md status-obras.md 2>&1 | Out-Null
+
 $pullResult = git pull --rebase 2>&1
-Write-Host $pullResult
+if ($LASTEXITCODE -ne 0) {
+    Write-Host "Aviso git pull: $pullResult" -ForegroundColor Yellow
+} else {
+    Write-Host $pullResult
+}
 
 $synced = @()
 $errors = @()
