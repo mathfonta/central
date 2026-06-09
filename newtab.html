@@ -1,0 +1,401 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Central</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Syne:wght@400;600;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --navy: #0D1B2E;
+    --navy-mid: #112240;
+    --orange: #F5A623;
+    --orange-dim: rgba(245,166,35,0.12);
+    --orange-glow: rgba(245,166,35,0.25);
+    --white: #F0EDE8;
+    --muted: rgba(240,237,232,0.35);
+    --muted2: rgba(240,237,232,0.12);
+    --danger: #e05c5c;
+    --green: #5ce08a;
+    --blue: #5c9ce0;
+    --purple: #a07be0;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: var(--navy); color: var(--white);
+    font-family: 'Syne', sans-serif; min-height: 100vh;
+    background-image:
+      radial-gradient(ellipse 60% 40% at 80% 0%, rgba(245,166,35,0.07) 0%, transparent 70%),
+      radial-gradient(ellipse 40% 60% at 10% 100%, rgba(17,34,64,0.8) 0%, transparent 70%);
+  }
+  header { display: flex; align-items: center; justify-content: space-between; padding: 28px 40px 0; }
+  .clock { font-family: 'DM Mono', monospace; font-size: 52px; font-weight: 500; letter-spacing: -2px; line-height: 1; }
+  .date-line { font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: 3px; margin-top: 4px; font-family: 'DM Mono', monospace; }
+  .weather-temp { font-size: 36px; font-weight: 800; color: var(--orange); line-height: 1; text-align: right; }
+  .weather-desc { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 2px; margin-top: 4px; font-family: 'DM Mono', monospace; text-align: right; }
+  .divider { height: 1px; background: linear-gradient(90deg, transparent, var(--orange-glow), transparent); margin: 24px 40px; }
+  .grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 20px; padding: 0 40px 40px; }
+
+  .card {
+    background: var(--navy-mid); border: 1px solid var(--muted2); border-radius: 16px;
+    padding: 24px; position: relative; overflow: hidden; transition: border-color 0.2s;
+    display: flex; flex-direction: column;
+  }
+  .card:hover { border-color: rgba(245,166,35,0.3); }
+  .card::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 2px; background: linear-gradient(90deg, var(--orange), transparent); opacity: 0; transition: opacity 0.2s; }
+  .card:hover::before { opacity: 1; }
+
+  .card-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; }
+  .card-label { font-size: 9px; text-transform: uppercase; letter-spacing: 3px; color: var(--orange); font-family: 'DM Mono', monospace; }
+  .status-dot { font-size: 10px; font-family: 'DM Mono', monospace; color: var(--muted); }
+  .status-dot.ok { color: var(--green); }
+  .status-dot.loading { color: var(--orange); }
+  .status-dot.error { color: var(--danger); }
+
+  .btn-sm { background: var(--muted2); border: 1px solid var(--muted2); border-radius: 8px; color: var(--muted); font-size: 10px; font-family: 'DM Mono', monospace; padding: 3px 9px; cursor: pointer; transition: all 0.2s; }
+  .btn-sm:hover { border-color: var(--orange); color: var(--orange); }
+  .btn-sm:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  .row-input { display: flex; gap: 8px; margin-bottom: 14px; }
+  .field { flex: 1; background: var(--muted2); border: 1px solid var(--muted2); border-radius: 10px; padding: 10px 14px; color: var(--white); font-family: 'Syne', sans-serif; font-size: 13px; outline: none; transition: border-color 0.2s; }
+  .field:focus { border-color: var(--orange); }
+  .field::placeholder { color: var(--muted); }
+  .btn-add { background: var(--orange); color: var(--navy); border: none; border-radius: 10px; width: 38px; height: 38px; font-size: 20px; cursor: pointer; font-weight: 800; display: flex; align-items: center; justify-content: center; flex-shrink: 0; transition: opacity 0.2s; }
+  .btn-add:hover { opacity: 0.85; }
+
+  .tag-row { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 14px; }
+  .tag { font-size: 10px; padding: 3px 10px; border-radius: 20px; border: 1px solid var(--muted2); color: var(--muted); cursor: pointer; font-family: 'DM Mono', monospace; transition: all 0.2s; text-transform: uppercase; letter-spacing: 1px; }
+  .tag.active, .tag:hover { border-color: var(--orange); color: var(--orange); background: var(--orange-dim); }
+
+  .scroll-list { display: flex; flex-direction: column; gap: 7px; overflow-y: auto; flex: 1; padding-right: 4px; max-height: 380px; }
+  .scroll-list::-webkit-scrollbar { width: 3px; }
+  .scroll-list::-webkit-scrollbar-thumb { background: var(--orange-glow); border-radius: 2px; }
+
+  @keyframes slideIn { from { opacity: 0; transform: translateY(-5px); } to { opacity: 1; transform: translateY(0); } }
+
+  /* IDEIAS */
+  .idea-item { background: var(--muted2); border-radius: 10px; padding: 10px 14px; display: flex; align-items: flex-start; gap: 10px; animation: slideIn 0.2s ease; }
+  .idea-item.remote { border-left: 2px solid var(--purple); }
+  .idea-badge { font-size: 9px; padding: 2px 7px; border-radius: 20px; background: var(--orange-dim); color: var(--orange); font-family: 'DM Mono', monospace; white-space: nowrap; flex-shrink: 0; margin-top: 1px; text-transform: uppercase; }
+  .idea-badge.remote { background: rgba(160,123,224,0.15); color: var(--purple); }
+  .idea-text { flex: 1; font-size: 13px; line-height: 1.4; }
+  .idea-time { font-size: 10px; color: var(--muted); font-family: 'DM Mono', monospace; white-space: nowrap; flex-shrink: 0; margin-top: 2px; }
+  .btn-del { background: none; border: none; color: var(--muted); cursor: pointer; font-size: 14px; padding: 0 2px; line-height: 1; flex-shrink: 0; transition: color 0.2s; }
+  .btn-del:hover { color: var(--danger); }
+
+  /* PROJETOS */
+  .projeto-card {
+    background: var(--muted2); border-radius: 12px; padding: 16px;
+    margin-bottom: 10px; animation: slideIn 0.2s ease;
+    border-left: 3px solid var(--orange);
+    cursor: default;
+  }
+  .projeto-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+  .projeto-nome { font-size: 13px; font-weight: 800; color: var(--white); text-transform: uppercase; letter-spacing: 1px; }
+  .projeto-badge { font-size: 9px; padding: 2px 8px; border-radius: 20px; font-family: 'DM Mono', monospace; text-transform: uppercase; letter-spacing: 1px; }
+  .badge-done { background: rgba(92,224,138,0.12); color: var(--green); }
+  .badge-dev { background: var(--orange-dim); color: var(--orange); }
+  .badge-paused { background: rgba(92,156,224,0.12); color: var(--blue); }
+
+  .projeto-story { font-size: 10px; color: var(--orange); font-family: 'DM Mono', monospace; margin-bottom: 6px; }
+  .projeto-proximo { font-size: 12px; color: var(--white); line-height: 1.5; margin-bottom: 8px; }
+  .projeto-feito { font-size: 11px; color: var(--muted); line-height: 1.4; border-top: 1px solid var(--muted2); padding-top: 8px; }
+  .projeto-feito-label { font-size: 9px; text-transform: uppercase; letter-spacing: 2px; color: var(--muted); font-family: 'DM Mono', monospace; margin-bottom: 3px; }
+  .projeto-update { font-size: 10px; color: var(--muted); font-family: 'DM Mono', monospace; margin-top: 6px; text-align: right; }
+
+  /* ESCOLA */
+  .tarefa-card { background: var(--muted2); border-radius: 12px; padding: 14px 16px; margin-bottom: 8px; border-left: 3px solid var(--orange); animation: slideIn 0.2s ease; }
+  .tarefa-card.vencida { border-left-color: var(--danger); }
+  .tarefa-card.hoje { border-left-color: var(--blue); }
+  .tarefa-materia { font-size: 9px; text-transform: uppercase; letter-spacing: 2px; color: var(--orange); font-family: 'DM Mono', monospace; margin-bottom: 4px; }
+  .tarefa-card.vencida .tarefa-materia { color: var(--danger); }
+  .tarefa-card.hoje .tarefa-materia { color: var(--blue); }
+  .tarefa-titulo { font-size: 13px; font-weight: 600; line-height: 1.4; margin-bottom: 5px; }
+  .tarefa-instrucoes { font-size: 12px; color: var(--muted); line-height: 1.5; margin-bottom: 8px; max-height: 55px; overflow: hidden; }
+  .tarefa-footer { display: flex; align-items: center; justify-content: space-between; }
+  .tarefa-prazo { font-size: 10px; font-family: 'DM Mono', monospace; color: var(--muted); }
+  .tarefa-badge { font-size: 9px; padding: 2px 8px; border-radius: 20px; background: var(--orange-dim); color: var(--orange); font-family: 'DM Mono', monospace; text-transform: uppercase; }
+  .tarefa-card.vencida .tarefa-badge { background: rgba(224,92,92,0.12); color: var(--danger); }
+  .tarefa-card.hoje .tarefa-badge { background: rgba(92,156,224,0.12); color: var(--blue); }
+
+  .empty { color: var(--muted); font-size: 12px; font-family: 'DM Mono', monospace; text-align: center; padding: 24px 0; line-height: 2; }
+  .empty span { display: block; font-size: 22px; margin-bottom: 4px; }
+  .spinner { display: inline-block; width: 12px; height: 12px; border: 2px solid var(--muted2); border-top-color: var(--orange); border-radius: 50%; animation: spin 0.7s linear infinite; vertical-align: middle; margin-right: 4px; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+</style>
+</head>
+<body>
+
+<header>
+  <div>
+    <div class="clock" id="clock">00:00</div>
+    <div class="date-line" id="dateStr">—</div>
+  </div>
+  <div>
+    <div class="weather-temp" id="wTemp">—°</div>
+    <div class="weather-desc" id="wDesc">carregando</div>
+  </div>
+</header>
+
+<div class="divider"></div>
+
+<div class="grid">
+
+  <!-- IDEIAS -->
+  <div class="card">
+    <div class="card-header">
+      <div class="card-label">⚡ Captura de Ideias</div>
+      <div style="display:flex;gap:6px;align-items:center">
+        <span class="status-dot" id="ideiasStatus">—</span>
+        <button class="btn-sm" id="btnIdeiasSync" onclick="syncIdeiasGmail()">↻ sync</button>
+      </div>
+    </div>
+    <div class="row-input">
+      <input class="field" id="ideaInput" placeholder="Ideia, insight, observação..." />
+      <button class="btn-add" onclick="addIdea()">+</button>
+    </div>
+    <div class="tag-row">
+      <div class="tag active" data-tag="geral" onclick="selectTag(this)">Geral</div>
+      <div class="tag" data-tag="autopost" onclick="selectTag(this)">AutoPost</div>
+      <div class="tag" data-tag="obras" onclick="selectTag(this)">Obras</div>
+      <div class="tag" data-tag="espectra" onclick="selectTag(this)">Espectra</div>
+      <div class="tag" data-tag="aiox" onclick="selectTag(this)">AIOX</div>
+      <div class="tag" data-tag="pessoal" onclick="selectTag(this)">Pessoal</div>
+    </div>
+    <div class="scroll-list" id="ideasList"></div>
+  </div>
+
+  <!-- PROJETOS -->
+  <div class="card">
+    <div class="card-header">
+      <div class="card-label">🚀 Projetos</div>
+      <div style="display:flex;gap:6px;align-items:center">
+        <span class="status-dot" id="projetosStatus">—</span>
+        <button class="btn-sm" id="btnProjetosSync" onclick="syncProjetos()">↻ sync</button>
+      </div>
+    </div>
+    <div class="scroll-list" id="projetosList">
+      <div class="empty"><span>🚀</span>Clique em sync para carregar<br>o status dos projetos<br>do seu Obsidian.</div>
+    </div>
+  </div>
+
+  <!-- ESCOLA -->
+  <div class="card">
+    <div class="card-header">
+      <div class="card-label">🎒 Vicente — Tarefas</div>
+      <div style="display:flex;gap:6px;align-items:center">
+        <span class="status-dot" id="escolaStatus">—</span>
+        <button class="btn-sm" id="btnEscolaSync" onclick="syncEscolaGmail()">↻ sync</button>
+      </div>
+    </div>
+    <div class="scroll-list" id="escolaList">
+      <div class="empty"><span>🎒</span>Clique em sync para<br>buscar tarefas do Vicente.</div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+// ── CLOCK ──────────────────────────────────────────────
+const DAYS=['Domingo','Segunda','Terça','Quarta','Quinta','Sexta','Sábado'];
+const MONTHS=['jan','fev','mar','abr','mai','jun','jul','ago','set','out','nov','dez'];
+function updateClock(){
+  const n=new Date();
+  document.getElementById('clock').textContent=`${String(n.getHours()).padStart(2,'0')}:${String(n.getMinutes()).padStart(2,'0')}`;
+  document.getElementById('dateStr').textContent=`${DAYS[n.getDay()]}, ${n.getDate()} ${MONTHS[n.getMonth()]} ${n.getFullYear()}`;
+}
+updateClock(); setInterval(updateClock,10000);
+
+// ── WEATHER ────────────────────────────────────────────
+async function loadWeather(){
+  try{
+    const r=await fetch('https://api.open-meteo.com/v1/forecast?latitude=-27.5969&longitude=-48.5495&current_weather=true&timezone=America%2FSao_Paulo');
+    const d=await r.json();
+    const descs={0:'céu limpo',1:'quase limpo',2:'parcialmente nublado',3:'nublado',45:'neblina',51:'garoa',61:'chuva',63:'chuva',65:'chuva forte',80:'pancadas',95:'trovoada'};
+    document.getElementById('wTemp').textContent=`${Math.round(d.current_weather.temperature)}°`;
+    document.getElementById('wDesc').textContent=descs[d.current_weather.weathercode]||'Florianópolis';
+  }catch(e){document.getElementById('wDesc').textContent='Florianópolis';}
+}
+loadWeather();
+
+// ── STORAGE ────────────────────────────────────────────
+const load=k=>JSON.parse(localStorage.getItem(k)||'[]');
+const save=(k,v)=>localStorage.setItem(k,JSON.stringify(v));
+
+// ── IDEIAS ─────────────────────────────────────────────
+let activeTag='geral';
+function selectTag(el){
+  document.querySelectorAll('.tag').forEach(t=>t.classList.remove('active'));
+  el.classList.add('active'); activeTag=el.dataset.tag;
+}
+function addIdea(){
+  const input=document.getElementById('ideaInput');
+  const text=input.value.trim(); if(!text)return;
+  const ideas=load('ideas');
+  ideas.unshift({id:Date.now(),text,tag:activeTag,remote:false,ts:new Date().toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})});
+  save('ideas',ideas); input.value=''; renderIdeas();
+}
+function deleteIdea(id){ save('ideas',load('ideas').filter(i=>i.id!==id)); renderIdeas(); }
+function renderIdeas(){
+  const list=document.getElementById('ideasList');
+  const ideas=load('ideas');
+  if(!ideas.length){list.innerHTML='<div class="empty">Capture aqui sua próxima ideia.<br><small style="opacity:0.6">Ou peça ao Claude/Gemini na rua.</small></div>';return;}
+  list.innerHTML=ideas.map(i=>`
+    <div class="idea-item ${i.remote?'remote':''}">
+      <span class="idea-badge ${i.remote?'remote':''}">${i.tag}</span>
+      <span class="idea-text">${i.text}</span>
+      <span class="idea-time">${i.ts}</span>
+      <button class="btn-del" onclick="deleteIdea(${i.id})">×</button>
+    </div>`).join('');
+}
+document.getElementById('ideaInput').addEventListener('keydown',e=>{if(e.key==='Enter')addIdea();});
+
+async function syncIdeiasGmail(){
+  const status=document.getElementById('ideiasStatus');
+  const btn=document.getElementById('btnIdeiasSync');
+  btn.disabled=true; status.className='status-dot loading'; status.innerHTML='<span class="spinner"></span>';
+  try{
+    const resp=await fetch("https://api.anthropic.com/v1/messages",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({
+      model:"claude-sonnet-4-20250514",max_tokens:1000,
+      mcp_servers:[{type:"url",url:"https://gmailmcp.googleapis.com/mcp/v1",name:"gmail-mcp"}],
+      system:`Busque emails no Gmail com assunto contendo "💡 IDEIA" recebidos nos últimos 30 dias.
+Para cada email extraia do corpo: tag (após "tag:"), texto (após "texto:"), hora (após "hora:").
+Retorne SOMENTE JSON: {"ideias":[{"tag":"...","texto":"...","hora":"..."}]}
+Se não houver: {"ideias":[]}`,
+      messages:[{role:"user",content:"Busque emails de ideias e retorne JSON."}]
+    })});
+    const data=await resp.json();
+    const raw=data.content?.filter(b=>b.type==='text').map(b=>b.text).join('')||'';
+    const parsed=JSON.parse(raw.replace(/```json|```/g,'').trim());
+    const ideias=parsed.ideias||[];
+    let local=load('ideas').filter(i=>!i.remote);
+    const remotas=ideias.map(i=>({id:Date.now()+Math.random(),text:i.texto||'(sem texto)',tag:i.tag||'geral',remote:true,ts:i.hora||'—'}));
+    save('ideas',[...remotas,...local]); renderIdeas();
+    status.className='status-dot ok'; status.textContent=`✓ ${ideias.length}`;
+  }catch(err){ status.className='status-dot error'; status.textContent='✗ erro'; }
+  finally{ btn.disabled=false; }
+}
+
+// ── PROJETOS — OBSIDIAN VIA DRIVE ──────────────────────
+const PROJETOS = [
+  { nome: 'Obras SaaS', id: '15_V_EYQrKFR8UW_SAscUijK_9TsytXwe', cor: '#F5A623' },
+  { nome: 'AutoPost',   id: '1px8e__g4MWTislunmV3BxDUITkHlUSxN', cor: '#5c9ce0' }
+];
+
+async function syncProjetos(){
+  const list=document.getElementById('projetosList');
+  const status=document.getElementById('projetosStatus');
+  const btn=document.getElementById('btnProjetosSync');
+  btn.disabled=true; status.className='status-dot loading'; status.innerHTML='<span class="spinner"></span>';
+  list.innerHTML='<div class="empty"><span class="spinner"></span><br>Lendo Obsidian...</div>';
+
+  try{
+    const resp=await fetch("https://api.anthropic.com/v1/messages",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({
+      model:"claude-sonnet-4-20250514",max_tokens:2000,
+      mcp_servers:[{type:"url",url:"https://drivemcp.googleapis.com/mcp/v1",name:"drive-mcp"}],
+      system:`Você vai ler arquivos do Google Drive e extrair informações de status de projetos.
+
+Para cada arquivo, leia o conteúdo e extraia:
+- nome: nome do projeto (do título H1)
+- story_ativa: conteúdo do campo "Story ativa:"
+- proximo_passo: conteúdo da seção "## Próximo passo" (máximo 2 linhas)
+- ultima_sessao: primeiros 2 bullets da seção "## O que foi feito" 
+- ultima_atualizacao: conteúdo do campo "Última atualização:"
+- branch: conteúdo do campo "Branch ativa:"
+
+IDs dos arquivos a ler:
+- Obras SaaS: 15_V_EYQrKFR8UW_SAscUijK_9TsytXwe
+- AutoPost: 1px8e__g4MWTislunmV3BxDUITkHlUSxN
+
+Retorne SOMENTE JSON válido sem markdown:
+{"projetos":[{"nome":"...","story_ativa":"...","proximo_passo":"...","ultima_sessao":"...","ultima_atualizacao":"...","branch":"..."}]}`,
+      messages:[{role:"user",content:"Leia os dois arquivos do Drive e retorne o JSON com o status dos projetos."}]
+    })});
+    const data=await resp.json();
+    const raw=data.content?.filter(b=>b.type==='text').map(b=>b.text).join('')||'';
+    const parsed=JSON.parse(raw.replace(/```json|```/g,'').trim());
+    const projetos=parsed.projetos||[];
+    renderProjetos(projetos);
+    status.className='status-dot ok'; status.textContent=`✓ ${projetos.length} projetos`;
+  }catch(err){
+    status.className='status-dot error'; status.textContent='✗ erro';
+    list.innerHTML='<div class="empty"><span>⚠️</span>Erro ao ler Obsidian.<br>Verifique conexão Drive.</div>';
+    console.error(err);
+  }finally{ btn.disabled=false; }
+}
+
+function renderProjetos(projetos){
+  const list=document.getElementById('projetosList');
+  if(!projetos.length){list.innerHTML='<div class="empty"><span>🚀</span>Nenhum projeto encontrado.</div>';return;}
+  const cores={'Obras SaaS':'var(--orange)','AutoPost':'var(--blue)'};
+  list.innerHTML=projetos.map(p=>{
+    const cor=cores[p.nome]||'var(--orange)';
+    const story=p.story_ativa&&p.story_ativa!=='nenhuma'?p.story_ativa:null;
+    return `<div class="projeto-card" style="border-left-color:${cor}">
+      <div class="projeto-header">
+        <span class="projeto-nome">${p.nome}</span>
+        ${story?`<span class="projeto-badge badge-dev">${story}</span>`:`<span class="projeto-badge badge-done">livre</span>`}
+      </div>
+      ${story?`<div class="projeto-story">📍 ${story}</div>`:''}
+      <div class="projeto-proximo">${p.proximo_passo||'—'}</div>
+      ${p.ultima_sessao?`<div class="projeto-feito">
+        <div class="projeto-feito-label">Última sessão</div>
+        ${p.ultima_sessao}
+      </div>`:''}
+      <div class="projeto-update">${p.ultima_atualizacao||''} · ${p.branch||''}</div>
+    </div>`;
+  }).join('');
+}
+
+// ── ESCOLA ─────────────────────────────────────────────
+async function syncEscolaGmail(){
+  const list=document.getElementById('escolaList');
+  const status=document.getElementById('escolaStatus');
+  const btn=document.getElementById('btnEscolaSync');
+  btn.disabled=true; status.className='status-dot loading'; status.innerHTML='<span class="spinner"></span>';
+  list.innerHTML='<div class="empty"><span class="spinner"></span><br>Buscando no Gmail...</div>';
+  try{
+    const resp=await fetch("https://api.anthropic.com/v1/messages",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({
+      model:"claude-sonnet-4-20250514",max_tokens:1000,
+      mcp_servers:[{type:"url",url:"https://gmailmcp.googleapis.com/mcp/v1",name:"gmail-mcp"}],
+      system:`Busque emails no Gmail com assunto "Nova tarefa do colégio" nos últimos 30 dias.
+Para cada um extraia: titulo, materia, prazo, instrucoes.
+Retorne SOMENTE JSON: {"tarefas":[{"titulo":"...","materia":"...","prazo":"...","instrucoes":"..."}]}
+Se não houver: {"tarefas":[]}`,
+      messages:[{role:"user",content:"Busque emails de tarefas do colégio e retorne JSON."}]
+    })});
+    const data=await resp.json();
+    const raw=data.content?.filter(b=>b.type==='text').map(b=>b.text).join('')||'';
+    const parsed=JSON.parse(raw.replace(/```json|```/g,'').trim());
+    renderTarefas(parsed.tarefas||[]);
+    status.className='status-dot ok'; status.textContent=`✓ ${(parsed.tarefas||[]).length}`;
+  }catch(err){
+    status.className='status-dot error'; status.textContent='✗ erro';
+    list.innerHTML='<div class="empty"><span>⚠️</span>Erro ao buscar.</div>';
+  }finally{ btn.disabled=false; }
+}
+
+function renderTarefas(tarefas){
+  const list=document.getElementById('escolaList');
+  if(!tarefas.length){list.innerHTML='<div class="empty"><span>✅</span>Nenhuma tarefa pendente.</div>';return;}
+  const hoje=new Date(); hoje.setHours(0,0,0,0);
+  list.innerHTML=tarefas.map(t=>{
+    let cls='',badge='pendente';
+    if(t.prazo){const d=new Date(t.prazo);if(!isNaN(d)){d.setHours(0,0,0,0);if(d<hoje){cls='vencida';badge='vencida';}else if(d.getTime()===hoje.getTime()){cls='hoje';badge='hoje';}}}
+    return `<div class="tarefa-card ${cls}">
+      <div class="tarefa-materia">${t.materia||'Colégio'}</div>
+      <div class="tarefa-titulo">${t.titulo||'Tarefa'}</div>
+      ${t.instrucoes?`<div class="tarefa-instrucoes">${t.instrucoes}</div>`:''}
+      <div class="tarefa-footer">
+        <span class="tarefa-prazo">📅 ${t.prazo||'sem prazo'}</span>
+        <span class="tarefa-badge">${badge}</span>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+// ── INIT ───────────────────────────────────────────────
+renderIdeas();
+</script>
+</body>
+</html>
