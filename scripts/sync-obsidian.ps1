@@ -9,10 +9,11 @@ $obsidianAutoPostDir = "G:\Meu Drive\OBSidian\AutoPost"
 $obsidianObrasDir    = "G:\Meu Drive\OBSidian\Obras"
 $centralRepo         = "C:\Projetos\central"
 
-# Usa wildcard para evitar problema de encoding com emoji no nome do arquivo
+# Busca *Status.md na pasta raiz e um nivel abaixo
 function Find-StatusMd($dir) {
     if (-not (Test-Path $dir)) { return $null }
-    $file = Get-ChildItem -Path $dir -Filter "*Status.md" -ErrorAction SilentlyContinue | Select-Object -First 1
+    # Busca recursiva limitada a 2 niveis de profundidade
+    $file = Get-ChildItem -Path $dir -Filter "*Status.md" -Recurse -Depth 2 -ErrorAction SilentlyContinue | Select-Object -First 1
     return $file
 }
 
@@ -31,10 +32,15 @@ $autoPostFile = Find-StatusMd $obsidianAutoPostDir
 if ($autoPostFile) {
     Copy-Item $autoPostFile.FullName "$centralRepo\status-autopost.md" -Force
     $synced += "AutoPost"
-    Write-Host "OK AutoPost: $($autoPostFile.Name)" -ForegroundColor Green
+    Write-Host "OK AutoPost: $($autoPostFile.FullName)" -ForegroundColor Green
 } else {
-    $errors += "AutoPost: nenhum *Status.md em $obsidianAutoPostDir"
+    $errors += "AutoPost: nenhum *Status.md encontrado em $obsidianAutoPostDir"
     Write-Host "AVISO: $($errors[-1])" -ForegroundColor Yellow
+    # Listar o que existe na pasta para diagnostico
+    if (Test-Path $obsidianAutoPostDir) {
+        Write-Host "  Arquivos .md encontrados:" -ForegroundColor DarkGray
+        Get-ChildItem -Path $obsidianAutoPostDir -Filter "*.md" -Recurse -Depth 1 -ErrorAction SilentlyContinue | Select-Object -First 10 | ForEach-Object { Write-Host "    $_" -ForegroundColor DarkGray }
+    }
 }
 
 # ── Copiar Obras ───────────────────────────────────────
@@ -42,9 +48,9 @@ $obrasFile = Find-StatusMd $obsidianObrasDir
 if ($obrasFile) {
     Copy-Item $obrasFile.FullName "$centralRepo\status-obras.md" -Force
     $synced += "Obras"
-    Write-Host "OK Obras: $($obrasFile.Name)" -ForegroundColor Green
+    Write-Host "OK Obras: $($obrasFile.FullName)" -ForegroundColor Green
 } else {
-    $errors += "Obras: nenhum *Status.md em $obsidianObrasDir"
+    $errors += "Obras: nenhum *Status.md encontrado em $obsidianObrasDir"
     Write-Host "AVISO: $($errors[-1])" -ForegroundColor Yellow
 }
 
@@ -54,8 +60,12 @@ if ($synced.Count -eq 0) {
     exit 1
 }
 
-# ── Git push ───────────────────────────────────────────
+# ── Git pull + push ────────────────────────────────────
 Set-Location $centralRepo
+
+# Sincroniza com origin antes de commitar (evita push rejected)
+Write-Host "Sincronizando com GitHub..." -ForegroundColor Cyan
+git pull --rebase 2>&1 | Write-Host
 
 $changed = git status --porcelain status-autopost.md status-obras.md
 if (-not $changed) {
