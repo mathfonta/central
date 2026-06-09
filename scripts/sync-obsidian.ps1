@@ -9,20 +9,24 @@ $obsidianAutoPostDir = "G:\Meu Drive\OBSidian\AutoPost"
 $obsidianObrasDir    = "G:\Meu Drive\OBSidian\Obras"
 $centralRepo         = "C:\Projetos\central"
 
-# Busca *Status.md na pasta raiz e um nivel abaixo
+# Busca qualquer arquivo cujo nome contenha "Status" e termine em .md
 function Find-StatusMd($dir) {
     if (-not (Test-Path $dir)) { return $null }
-    # Busca recursiva limitada a 2 niveis de profundidade
-    $file = Get-ChildItem -Path $dir -Filter "*Status.md" -Recurse -Depth 2 -ErrorAction SilentlyContinue | Select-Object -First 1
+    $file = Get-ChildItem -Path $dir -Filter "*Status*.md" -Recurse -Depth 2 -ErrorAction SilentlyContinue | Select-Object -First 1
     return $file
 }
 
 # ── Verificacoes iniciais ──────────────────────────────
 if (-not (Test-Path $centralRepo)) {
     Write-Host "ERRO: Repo nao encontrado em $centralRepo" -ForegroundColor Red
-    Write-Host "Clone o repo: git clone https://github.com/mathfonta/central.git $centralRepo"
     exit 1
 }
+
+# ── Git pull ANTES de copiar arquivos ─────────────────
+Set-Location $centralRepo
+Write-Host "Sincronizando com GitHub..." -ForegroundColor Cyan
+$pullResult = git pull --rebase 2>&1
+Write-Host $pullResult
 
 $synced = @()
 $errors = @()
@@ -32,15 +36,10 @@ $autoPostFile = Find-StatusMd $obsidianAutoPostDir
 if ($autoPostFile) {
     Copy-Item $autoPostFile.FullName "$centralRepo\status-autopost.md" -Force
     $synced += "AutoPost"
-    Write-Host "OK AutoPost: $($autoPostFile.FullName)" -ForegroundColor Green
+    Write-Host "OK AutoPost: $($autoPostFile.Name)" -ForegroundColor Green
 } else {
-    $errors += "AutoPost: nenhum *Status.md encontrado em $obsidianAutoPostDir"
+    $errors += "AutoPost: nenhum *Status*.md em $obsidianAutoPostDir"
     Write-Host "AVISO: $($errors[-1])" -ForegroundColor Yellow
-    # Listar o que existe na pasta para diagnostico
-    if (Test-Path $obsidianAutoPostDir) {
-        Write-Host "  Arquivos .md encontrados:" -ForegroundColor DarkGray
-        Get-ChildItem -Path $obsidianAutoPostDir -Filter "*.md" -Recurse -Depth 1 -ErrorAction SilentlyContinue | Select-Object -First 10 | ForEach-Object { Write-Host "    $_" -ForegroundColor DarkGray }
-    }
 }
 
 # ── Copiar Obras ───────────────────────────────────────
@@ -48,9 +47,9 @@ $obrasFile = Find-StatusMd $obsidianObrasDir
 if ($obrasFile) {
     Copy-Item $obrasFile.FullName "$centralRepo\status-obras.md" -Force
     $synced += "Obras"
-    Write-Host "OK Obras: $($obrasFile.FullName)" -ForegroundColor Green
+    Write-Host "OK Obras: $($obrasFile.Name)" -ForegroundColor Green
 } else {
-    $errors += "Obras: nenhum *Status.md encontrado em $obsidianObrasDir"
+    $errors += "Obras: nenhum *Status*.md em $obsidianObrasDir"
     Write-Host "AVISO: $($errors[-1])" -ForegroundColor Yellow
 }
 
@@ -60,13 +59,7 @@ if ($synced.Count -eq 0) {
     exit 1
 }
 
-# ── Git pull + push ────────────────────────────────────
-Set-Location $centralRepo
-
-# Sincroniza com origin antes de commitar (evita push rejected)
-Write-Host "Sincronizando com GitHub..." -ForegroundColor Cyan
-git pull --rebase 2>&1 | Write-Host
-
+# ── Commitar e push ────────────────────────────────────
 $changed = git status --porcelain status-autopost.md status-obras.md
 if (-not $changed) {
     Write-Host "Sem mudancas para commitar." -ForegroundColor Cyan
