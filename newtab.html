@@ -175,7 +175,7 @@
       </div>
     </div>
     <div class="scroll-list" id="projetosList">
-      <div class="empty"><span>🚀</span>Clique em sync para carregar<br>o status dos projetos<br>do seu Obsidian.</div>
+      <div class="empty"><span>🚀</span>Clique em sync para carregar<br>o status dos projetos.</div>
     </div>
   </div>
 
@@ -219,7 +219,8 @@ async function loadWeather(){
 loadWeather();
 
 // ── STORAGE ────────────────────────────────────────────
-const load=k=>JSON.parse(localStorage.getItem(k)||'[]');
+const load=k=>JSON.parse(localStorage.getItem(k)||'null');
+const loadArr=k=>JSON.parse(localStorage.getItem(k)||'[]');
 const save=(k,v)=>localStorage.setItem(k,JSON.stringify(v));
 
 // ── IDEIAS ─────────────────────────────────────────────
@@ -231,14 +232,14 @@ function selectTag(el){
 function addIdea(){
   const input=document.getElementById('ideaInput');
   const text=input.value.trim(); if(!text)return;
-  const ideas=load('ideas');
+  const ideas=loadArr('ideas');
   ideas.unshift({id:Date.now(),text,tag:activeTag,remote:false,ts:new Date().toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})});
   save('ideas',ideas); input.value=''; renderIdeas();
 }
-function deleteIdea(id){ save('ideas',load('ideas').filter(i=>i.id!==id)); renderIdeas(); }
+function deleteIdea(id){ save('ideas',loadArr('ideas').filter(i=>i.id!==id)); renderIdeas(); }
 function renderIdeas(){
   const list=document.getElementById('ideasList');
-  const ideas=load('ideas');
+  const ideas=loadArr('ideas');
   if(!ideas.length){list.innerHTML='<div class="empty">Capture aqui sua próxima ideia.<br><small style="opacity:0.6">Ou peça ao Claude/Gemini na rua.</small></div>';return;}
   list.innerHTML=ideas.map(i=>`
     <div class="idea-item ${i.remote?'remote':''}">
@@ -268,7 +269,7 @@ Se não houver: {"ideias":[]}`,
     const raw=data.content?.filter(b=>b.type==='text').map(b=>b.text).join('')||'';
     const parsed=JSON.parse(raw.replace(/```json|```/g,'').trim());
     const ideias=parsed.ideias||[];
-    let local=load('ideas').filter(i=>!i.remote);
+    let local=loadArr('ideas').filter(i=>!i.remote);
     const remotas=ideias.map(i=>({id:Date.now()+Math.random(),text:i.texto||'(sem texto)',tag:i.tag||'geral',remote:true,ts:i.hora||'—'}));
     save('ideas',[...remotas,...local]); renderIdeas();
     status.className='status-dot ok'; status.textContent=`✓ ${ideias.length}`;
@@ -276,73 +277,100 @@ Se não houver: {"ideias":[]}`,
   finally{ btn.disabled=false; }
 }
 
-// ── PROJETOS — OBSIDIAN VIA DRIVE ──────────────────────
-const PROJETOS = [
-  { nome: 'Obras SaaS', id: '15_V_EYQrKFR8UW_SAscUijK_9TsytXwe', cor: '#F5A623' },
-  { nome: 'AutoPost',   id: '1px8e__g4MWTislunmV3BxDUITkHlUSxN', cor: '#5c9ce0' }
+// ── PROJETOS — GitHub raw (sem CORS) ───────────────────
+const STATUS_PROJETOS = [
+  { nome: 'AutoPost',   slug: 'status-autopost', cor: 'var(--blue)' },
+  { nome: 'Obras SaaS', slug: 'status-obras',    cor: 'var(--orange)' }
 ];
+const RAW_BASE = 'https://raw.githubusercontent.com/mathfonta/central/main/';
 
-async function syncProjetos(){
-  const list=document.getElementById('projetosList');
-  const status=document.getElementById('projetosStatus');
-  const btn=document.getElementById('btnProjetosSync');
-  btn.disabled=true; status.className='status-dot loading'; status.innerHTML='<span class="spinner"></span>';
-  list.innerHTML='<div class="empty"><span class="spinner"></span><br>Lendo Obsidian...</div>';
-
-  try{
-    const resp=await fetch("https://api.anthropic.com/v1/messages",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({
-      model:"claude-sonnet-4-20250514",max_tokens:2000,
-      mcp_servers:[{type:"url",url:"https://drivemcp.googleapis.com/mcp/v1",name:"drive-mcp"}],
-      system:`Você vai ler arquivos do Google Drive e extrair informações de status de projetos.
-
-Para cada arquivo, leia o conteúdo e extraia:
-- nome: nome do projeto (do título H1)
-- story_ativa: conteúdo do campo "Story ativa:"
-- proximo_passo: conteúdo da seção "## Próximo passo" (máximo 2 linhas)
-- ultima_sessao: primeiros 2 bullets da seção "## O que foi feito" 
-- ultima_atualizacao: conteúdo do campo "Última atualização:"
-- branch: conteúdo do campo "Branch ativa:"
-
-IDs dos arquivos a ler:
-- Obras SaaS: 15_V_EYQrKFR8UW_SAscUijK_9TsytXwe
-- AutoPost: 1px8e__g4MWTislunmV3BxDUITkHlUSxN
-
-Retorne SOMENTE JSON válido sem markdown:
-{"projetos":[{"nome":"...","story_ativa":"...","proximo_passo":"...","ultima_sessao":"...","ultima_atualizacao":"...","branch":"..."}]}`,
-      messages:[{role:"user",content:"Leia os dois arquivos do Drive e retorne o JSON com o status dos projetos."}]
-    })});
-    const data=await resp.json();
-    const raw=data.content?.filter(b=>b.type==='text').map(b=>b.text).join('')||'';
-    const parsed=JSON.parse(raw.replace(/```json|```/g,'').trim());
-    const projetos=parsed.projetos||[];
-    renderProjetos(projetos);
-    status.className='status-dot ok'; status.textContent=`✓ ${projetos.length} projetos`;
-  }catch(err){
-    status.className='status-dot error'; status.textContent='✗ erro';
-    list.innerHTML='<div class="empty"><span>⚠️</span>Erro ao ler Obsidian.<br>Verifique conexão Drive.</div>';
-    console.error(err);
-  }finally{ btn.disabled=false; }
+function parseStatusMd(md, nome, cor) {
+  const field = (label) => {
+    const m = md.match(new RegExp(`\\*\\*${label}:\\*\\*\\s*(.+)`));
+    return m ? m[1].trim() : '—';
+  };
+  const section = (heading) => {
+    const m = md.match(new RegExp(`## ${heading}\\n([\\s\\S]*?)(?=\\n## |$)`));
+    return m ? m[1].trim() : '';
+  };
+  return {
+    nome,
+    cor,
+    story_ativa:       field('Story ativa'),
+    proximo_passo:     section('Próximo passo').split('\n').slice(0,2).join('\n'),
+    ultima_sessao:     section('O que foi feito \\([^)]+\\)').split('\n').filter(l=>l.startsWith('-')).slice(0,2).join('\n'),
+    ultima_atualizacao: field('Última atualização'),
+    branch:            field('Branch ativa'),
+  };
 }
 
-function renderProjetos(projetos){
-  const list=document.getElementById('projetosList');
-  if(!projetos.length){list.innerHTML='<div class="empty"><span>🚀</span>Nenhum projeto encontrado.</div>';return;}
-  const cores={'Obras SaaS':'var(--orange)','AutoPost':'var(--blue)'};
-  list.innerHTML=projetos.map(p=>{
-    const cor=cores[p.nome]||'var(--orange)';
-    const story=p.story_ativa&&p.story_ativa!=='nenhuma'?p.story_ativa:null;
-    return `<div class="projeto-card" style="border-left-color:${cor}">
+async function syncProjetos() {
+  const list   = document.getElementById('projetosList');
+  const status = document.getElementById('projetosStatus');
+  const btn    = document.getElementById('btnProjetosSync');
+  btn.disabled = true;
+  status.className = 'status-dot loading';
+  status.innerHTML = '<span class="spinner"></span>';
+  list.innerHTML   = '<div class="empty"><span class="spinner"></span><br>Lendo Obsidian…</div>';
+
+  try {
+    const results = await Promise.all(
+      STATUS_PROJETOS.map(async ({ nome, slug, cor }) => {
+        const r = await fetch(`${RAW_BASE}${slug}.md?t=${Date.now()}`);
+        if (!r.ok) throw new Error(`HTTP ${r.status} para ${nome}`);
+        const md = await r.text();
+        return parseStatusMd(md, nome, cor);
+      })
+    );
+    renderProjetos(results);
+    save('projetos_cache', results);
+    save('projetos_cache_ts', Date.now());
+    status.className = 'status-dot ok';
+    status.textContent = `✓ ${results.length}`;
+  } catch (err) {
+    const cache = load('projetos_cache');
+    if (cache && cache.length) {
+      renderProjetos(cache);
+      const ts  = load('projetos_cache_ts');
+      const age = ts ? Math.round((Date.now() - ts) / 60000) : '?';
+      status.className = 'status-dot error';
+      status.textContent = `⚠ cache (${age}min)`;
+    } else {
+      status.className = 'status-dot error';
+      status.textContent = '✗ erro';
+      list.innerHTML = '<div class="empty"><span>⚠️</span>Arquivos não encontrados.<br>Execute o script de sync.</div>';
+    }
+    console.error('syncProjetos:', err);
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+function renderProjetos(projetos) {
+  const list = document.getElementById('projetosList');
+  if (!projetos.length) {
+    list.innerHTML = '<div class="empty"><span>🚀</span>Nenhum projeto encontrado.</div>';
+    return;
+  }
+  list.innerHTML = projetos.map(p => {
+    const story = p.story_ativa && p.story_ativa !== 'nenhuma' ? p.story_ativa : null;
+    const ultimaSessaoHtml = p.ultima_sessao
+      ? p.ultima_sessao.split('\n').map(l => `<div>${l}</div>`).join('')
+      : '';
+    return `<div class="projeto-card" style="border-left-color:${p.cor||'var(--orange)'}">
       <div class="projeto-header">
         <span class="projeto-nome">${p.nome}</span>
-        ${story?`<span class="projeto-badge badge-dev">${story}</span>`:`<span class="projeto-badge badge-done">livre</span>`}
+        ${story
+          ? `<span class="projeto-badge badge-dev">${story}</span>`
+          : `<span class="projeto-badge badge-done">livre</span>`}
       </div>
-      ${story?`<div class="projeto-story">📍 ${story}</div>`:''}
-      <div class="projeto-proximo">${p.proximo_passo||'—'}</div>
-      ${p.ultima_sessao?`<div class="projeto-feito">
+      ${story ? `<div class="projeto-story">📍 ${story}</div>` : ''}
+      <div class="projeto-proximo">${p.proximo_passo || '—'}</div>
+      ${ultimaSessaoHtml ? `<div class="projeto-feito">
         <div class="projeto-feito-label">Última sessão</div>
-        ${p.ultima_sessao}
-      </div>`:''}
-      <div class="projeto-update">${p.ultima_atualizacao||''} · ${p.branch||''}</div>
+        ${ultimaSessaoHtml}
+      </div>` : ''}
+      <div class="projeto-update">${p.ultima_atualizacao} · ${p.branch}</div>
     </div>`;
   }).join('');
 }
@@ -396,6 +424,17 @@ function renderTarefas(tarefas){
 
 // ── INIT ───────────────────────────────────────────────
 renderIdeas();
+
+// Carrega projetos do cache na abertura (sem precisar clicar sync)
+const cachedProjetos = load('projetos_cache');
+if (cachedProjetos && cachedProjetos.length) {
+  renderProjetos(cachedProjetos);
+  const ts  = load('projetos_cache_ts');
+  const age = ts ? Math.round((Date.now() - ts) / 60000) : null;
+  const projetosStatus = document.getElementById('projetosStatus');
+  projetosStatus.className = 'status-dot ok';
+  projetosStatus.textContent = age !== null ? `cache ${age}min` : 'cache';
+}
 </script>
 </body>
 </html>
